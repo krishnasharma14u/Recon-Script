@@ -24,14 +24,39 @@ cut -d " " -f1 resolved-domains.txt | sed 's/.$//' | tee live-domains.txt
 
 naabu_scan()
 {
-cat live-domains.txt | naabu -json | tee naabu-ports.json
-cat ports.json | grep 8080 | cut -d'"' -f4 | httpx -title -status-code -ports 8080 | tee naabu-sites.txt
-cat ports.json | grep 8443 | cut -d'"' -f4 | httpx -title -status-code -ports 8443 | tee -a naabu-sites.txt; echo "Naabu Port Scan Completed"
+cat live-domains.txt | naabu -json | tee naabu-ports.json 
+cat naabu-ports.json | grep 8080 | cut -d'"' -f4 | httpx -title -status-code -ports 8080 | tee naabu-sites.txt
+cat naabu-ports.json | grep 8443 | cut -d'"' -f4 | httpx -title -status-code -ports 8443 | tee -a naabu-sites.txt; echo "Naabu Port Scan Completed"
 }
+
+run_httpx()
+{
 cat live-domains.txt | httpx -title -status-code | tee live-sites.txt
+if ls -lha | grep naabu-sitess.txt
+then 
+    cat naabu-sites.txt | tee -a live-sites.txt
+fi
 cat live-sites.txt | cut -d' ' -f1 | tee ffuf-res.txt && ffres=$(wc -l ffuf-res.txt | cut -d' ' -f1); echo "total $ffres live websites found" | notify
+}
+
+run_masscan()
+{
 cat resolved-domains.txt | cut -d'A' -f2 | sed '/\.$/d' | sed -r 's/\s+//g' | sort -u | tee ip.txt
-masscan -iL ip.txt -p0-65535 --rate 10000 -oJ masscan.json; echo "Masscan completed" & .
-mkdir jsfscan && cp ffuf-res.txt jsfscan/ && jsfscan -l ffuf-res.txt -s -e -r & .
-ffuf -u FUZZDOMAINS/FUZZ -w domains.txt:FUZZDOMAINS -w  /usr/share/SecLists/Discovery/Web-Content:FUZZ -mc 200 -fl 0,1 -fr 'Not Found','Unathoriza','Forbiden' -t 10000 -of html -o ffuf-report.html; echo "Fffuf Completed" & .
-cat ffuf-res.txt | nuclei -t cves -t exposed-panels -t fuzzing -t misconfiguration -t vulnerabilities -t default-logins -t exposed-tokens -t helpers -t takeovers -t workflows -t dns -t exposures -t miscellaneous -t technologies -o nucli-result.txt; echo "Nuclei Completed" | notify & .
+nohup masscan -iL ip.txt -p0-65535 --rate 10000 -oJ masscan.json; echo "Masscan completed" & 
+}
+
+run_jsfscan()
+{
+(nohup bash /usr/share/JSFScan.sh/JSFScan.sh -l ffuf-res.txt -s -e -r; echo "JSFScan Completed") & 
+}
+
+run_ffuf()
+{
+(nohup ffuf -u FUZZDOMAINS/FUZZ -w ffuf-res.txt:FUZZDOMAINS -w /usr/share/SecLists/Discovery/Web-Content/dicc.txt:FUZZ -mc 200 -fl 0,1 -fr 'Not Found','Unauthoriza','Forbidden' -t 10000 -of html -o ffuf-report.html; echo "Fffuf Completed" | notify) & 
+}
+
+run_nuclei()
+{
+(nohup cat ffuf-res.txt | nuclei -t cves -t exposed-panels -t fuzzing -t misconfiguration -t vulnerabilities -t default-logins -t exposed-tokens -t helpers -t takeovers -t workflows -t dns -t exposures -t miscellaneous -t technologies -o nucli-result.txt && nucl=$(wc -l nucli-result.txt | cut -d' ' -f1); echo "total $nucl issues found" | notify) & 
+}
+$1
